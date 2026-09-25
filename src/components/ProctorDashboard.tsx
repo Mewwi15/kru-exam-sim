@@ -25,6 +25,7 @@ import {
 import {
   CaretRightOutlined,
   CopyOutlined,
+  DownloadOutlined,
   HomeOutlined,
   LinkOutlined,
   QrcodeOutlined,
@@ -34,25 +35,16 @@ import {
 import { Brand } from "./Brand";
 import { Countdown } from "./Countdown";
 import { Leaderboard } from "./Leaderboard";
+import { StudentSummaryDrawer } from "./StudentSummary";
 import { api, ApiError, serverNow } from "@/lib/api";
 import { proctorTopic, realtime, roomTopic } from "@/lib/realtime";
 import { CHOICE_LABELS, PASS_PERCENT, STANDARDS, TOTAL_QUESTIONS, type FullQuestion } from "@/lib/exam-meta";
 import { load, save, teacherKey } from "@/lib/storage";
+import { downloadText, rankRows, roomCsv, type Cell, type StudentRecord } from "@/lib/summary";
 
 // ── ชนิดข้อมูล ──────────────────────────────────────────────────────────────
-type Cell = null | { c: number; ok: boolean };
-type Status = "waiting" | "running" | "submitted";
-type Row = {
-  id: string;
-  name: string;
-  seatNo: number;
-  examCode: string;
-  status: Status;
-  score: number;
-  answered: number;
-  usedSec: number | null;
-  cells: Cell[];
-};
+type Status = StudentRecord["status"];
+type Row = StudentRecord;
 type RoomInfo = {
   code: string;
   title: string;
@@ -191,6 +183,7 @@ export default function ProctorDashboard({ code, tokenFromUrl }: { code: string;
   const [sortBy, setSortBy] = useState<"seat" | "score">("seat");
   const [origin, setOrigin] = useState("");
   const [busy, setBusy] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const autoEnded = useRef(false);
   const sinceRef = useRef<string | null>(null);
   const polling = useRef(false);
@@ -373,6 +366,8 @@ export default function ProctorDashboard({ code, tokenFromUrl }: { code: string;
   const withAnswers = all.filter((r) => r.answered > 0);
   const avgScore = withAnswers.length ? withAnswers.reduce((s, r) => s + r.score, 0) / withAnswers.length : 0;
   const avgAnswered = all.length ? all.reduce((s, r) => s + r.answered, 0) / all.length : 0;
+  const ranked = rankRows(all);
+  const selected = selectedId ? (state.rows.get(selectedId) ?? null) : null;
   const joinUrl = `${origin}/join/${room.code}`;
   const teacherUrl = `${origin}/proctor/${room.code}?t=${token}`;
 
@@ -459,6 +454,18 @@ export default function ProctorDashboard({ code, tokenFromUrl }: { code: string;
         <div className="grid gap-4 2xl:grid-cols-[1fr_320px]">
           <Card className="min-w-0 shadow-sm" size="small">
             <Tabs
+              tabBarExtraContent={
+                <Tooltip title="ไฟล์ CSV เปิดด้วย Excel ได้ มีคะแนนรายมาตรฐานและคำตอบทุกข้อของทุกคน">
+                  <Button
+                    size="small"
+                    icon={<DownloadOutlined />}
+                    disabled={!questions?.length || all.length === 0}
+                    onClick={() => downloadText(`ผลสอบ-${room.code}.csv`, roomCsv(all, questions ?? []))}
+                  >
+                    ดาวน์โหลดผล (Excel)
+                  </Button>
+                </Tooltip>
+              }
               items={[
                 {
                   key: "grid",
@@ -484,7 +491,7 @@ export default function ProctorDashboard({ code, tokenFromUrl }: { code: string;
                           <div className="min-w-max space-y-1">
                             <GridHeader />
                             {rows.map((r) => (
-                              <StudentRow key={r.id} row={r} online={online.has(r.id)} />
+                              <StudentRow key={r.id} row={r} online={online.has(r.id)} onSelect={setSelectedId} />
                             ))}
                           </div>
                         </div>
@@ -502,9 +509,8 @@ export default function ProctorDashboard({ code, tokenFromUrl }: { code: string;
                   label: "อันดับคะแนน",
                   children: (
                     <Leaderboard
-                      rows={[...all]
-                        .sort((a, b) => b.score - a.score || (a.usedSec ?? 1e9) - (b.usedSec ?? 1e9) || a.seatNo - b.seatNo)
-                        .map((r) => ({ id: r.id, name: r.name, score: r.score, answered: r.answered, usedSec: r.usedSec, submittedAt: null }))}
+                      rows={ranked.map((r) => ({ id: r.id, name: r.name, score: r.score, answered: r.answered, usedSec: r.usedSec, submittedAt: null }))}
+                      onSelect={setSelectedId}
                     />
                   ),
                 },
@@ -535,6 +541,14 @@ export default function ProctorDashboard({ code, tokenFromUrl }: { code: string;
           </Card>
         </div>
       </main>
+      <StudentSummaryDrawer
+        row={selected}
+        rank={selected ? ranked.findIndex((r) => r.id === selected.id) + 1 : 0}
+        total={all.length}
+        online={selected ? online.has(selected.id) : false}
+        questions={questions}
+        onClose={() => setSelectedId(null)}
+      />
     </div>
   );
 }
@@ -592,7 +606,15 @@ function GridHeader() {
 }
 
 // แถวนักเรียนหนึ่งคน: render ใหม่เฉพาะแถวที่ข้อมูลเปลี่ยน
-const StudentRow = memo(function StudentRow({ row, online }: { row: Row; online: boolean }) {
+const StudentRow = memo(function StudentRow({
+  row,
+  online,
+  onSelect,
+}: {
+  row: Row;
+  online: boolean;
+  onSelect: (id: string) => void;
+}) {
   const passed = row.score >= (PASS_PERCENT / 100) * TOTAL_QUESTIONS;
   return (
     <div className="flex items-center gap-3 rounded-md px-1 py-1 hover:bg-slate-50">
@@ -600,9 +622,14 @@ const StudentRow = memo(function StudentRow({ row, online }: { row: Row; online:
         <span className="font-mono text-xs text-slate-500">{String(row.seatNo).padStart(3, "0")}</span>
         <span className="flex min-w-0 items-center gap-1.5">
           <Badge status={row.status === "submitted" ? "default" : online ? "success" : "error"} />
-          <span className="truncate" title={`${row.name} · รหัสผู้สอบ ${row.examCode}`}>
+          <button
+            type="button"
+            onClick={() => onSelect(row.id)}
+            className="cursor-pointer truncate border-0 bg-transparent p-0 text-left text-inherit hover:text-blue-700 hover:underline"
+            title={`ดูสรุปรายบุคคล: ${row.name} · รหัสผู้สอบ ${row.examCode}`}
+          >
             {row.name}
-          </span>
+          </button>
           {row.status === "submitted" && <Tag className="m-0 px-1 text-[10px] leading-4">ส่งแล้ว</Tag>}
         </span>
         <span className={`font-semibold tabular-nums ${passed ? "text-green-600" : ""}`}>{row.score}</span>

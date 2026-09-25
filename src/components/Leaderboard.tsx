@@ -21,11 +21,13 @@ export function Leaderboard({
   highlightId,
   loading,
   size = "middle",
+  onSelect,
 }: {
   rows: BoardRow[];
   highlightId?: string;
   loading?: boolean;
   size?: "small" | "middle";
+  onSelect?: (id: string) => void;
 }) {
   return (
     <Table<BoardRow>
@@ -35,7 +37,8 @@ export function Leaderboard({
       dataSource={rows}
       pagination={false}
       locale={{ emptyText: <Empty description="ยังไม่มีผู้ส่งข้อสอบ" /> }}
-      rowClassName={(r) => (r.id === highlightId ? "bg-amber-50" : "")}
+      rowClassName={(r) => `${r.id === highlightId ? "bg-amber-50" : ""} ${onSelect ? "cursor-pointer" : ""}`}
+      onRow={onSelect ? (r) => ({ onClick: () => onSelect(r.id) }) : undefined}
       columns={[
         {
           title: "อันดับ",
