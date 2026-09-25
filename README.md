@@ -1,36 +1,99 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ข้อสอบจำลอง วิชาครู (ใบอนุญาตประกอบวิชาชีพครู)
 
-## Getting Started
+เว็บฝึกทำข้อสอบ 100 ข้อตามผังการสร้างแบบทดสอบ วิชาครู พ.ศ. 2566 ของคุรุสภา
+- **สอบเดี่ยว**: กรอกชื่อแล้วเริ่มได้ทันที จับเวลา 3 ชั่วโมง มีอันดับคะแนน
+- **ห้องสอบมีครูคุม**: ครูสร้างห้องแล้วแจกรหัส 6 หลักหรือ QR นักเรียนเข้าห้องแล้วรอ ครูกดเริ่มทุกคนเริ่มพร้อมกัน
+  ระหว่างสอบครูเห็นทันทีว่าใครตอบข้อไหน ถูกหรือผิด และใครออนไลน์อยู่
+- ดูเฉลยพร้อมคำอธิบายรายข้อได้หลังส่งข้อสอบ
 
-First, run the development server:
+> ข้อสอบทุกข้อแต่งขึ้นใหม่ ไม่ใช่ข้อสอบจริง (คุรุสภาไม่เผยแพร่ข้อสอบจริง)
+
+## โครงสร้างข้อสอบ
+
+| มาตรฐาน | เรื่อง | ข้อ |
+|---|---|---|
+| 1 | การเปลี่ยนแปลงบริบทโลก สังคม และปรัชญาของเศรษฐกิจพอเพียง | 12 |
+| 2 | จิตวิทยาพัฒนาการ จิตวิทยาการศึกษา และจิตวิทยาให้คำปรึกษา | 25 |
+| 3 | หลักสูตร ศาสตร์การสอน และเทคโนโลยีดิจิทัล | 30 |
+| 4 | การวัด ประเมินผล และการวิจัย | 25 |
+| 5 | การประกันคุณภาพการศึกษา | 8 |
+
+- ระดับความยากตามผัง: L1 10 ข้อ, L2 20 ข้อ, L3 50 ข้อ, L4 20 ข้อ
+- จำนวนข้อของหัวข้อย่อยทุกหัวข้อตรงตามผัง
+- ข้อสอบอยู่ที่ `src/data/questions.json`
+
+## สถาปัตยกรรม
+
+- **Next.js 16** (App Router) + **Ant Design 6** + **Tailwind CSS 4**
+- **Supabase**
+  - Postgres เก็บห้อง ผู้สอบ และคำตอบ
+  - Realtime ใช้ส่งสัญญาณเริ่ม/จบ เหตุการณ์ของครู และสถานะออนไลน์
+- เฉลยอยู่ฝั่ง server เท่านั้น
+  - ระหว่างสอบ เบราว์เซอร์ได้แค่โจทย์ ไม่มีเฉลย
+  - การตรวจคำตอบทำใน route handler
+- ทุกตารางเปิด RLS แต่ไม่มี policy
+  - เบราว์เซอร์อ่านเขียนฐานข้อมูลตรง ๆ ไม่ได้
+  - ทุกอย่างผ่าน API ของเว็บ ซึ่งเรียกฟังก์ชัน SQL ครั้งเดียวต่อคำขอ
+- ความลื่นของหน้าสอบ
+  - กดตอบแล้วหน้าจอเปลี่ยนทันที ไม่ต้องรอเน็ต
+  - คำตอบเข้าคิวแล้วส่งเบื้องหลัง
+  - เน็ตหลุดก็ลองใหม่เอง และเก็บคำตอบที่ค้างไว้ในเครื่อง รีเฟรชแล้วไม่หาย
+- นาฬิกาทุกเครื่องเทียบกับเวลา server จึงหมดเวลาพร้อมกัน
+  - หน้าครูมีการดึงข้อมูลทั้งห้องซ้ำเป็นระยะด้วย เผื่อข้อความ realtime หลุด
+
+## ติดตั้งและรันบนเครื่อง
+
+ต้องมี Node 20 ขึ้นไป, pnpm และ Docker (ใช้รัน Supabase บนเครื่อง)
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install
+npx supabase start -x studio,storage-api,imgproxy,mailpit,edge-runtime,logflare,vector,supavisor,postgres-meta,gotrue
+npx supabase status -o env   # ดู API_URL, PUBLISHABLE_KEY, SECRET_KEY
+cp .env.example .env.local   # ใส่ค่าจากคำสั่งด้านบน
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- Supabase ของโปรเจกต์นี้ใช้พอร์ต 553xx จึงรันพร้อมโปรเจกต์ Supabase อื่นได้
+- เปิด http://localhost:3000 หน้าครูอยู่ที่ /proctor
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Deploy ขึ้น Supabase + Vercel
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. สร้างโปรเจกต์ที่ [supabase.com](https://supabase.com)
+   - เลือก Region **Southeast Asia (Singapore)** ให้อยู่ใกล้ Vercel `sin1`
+2. สร้างตาราง ทำได้ 2 ทาง
+   - เปิด **SQL Editor** วางเนื้อหาไฟล์ `supabase/migrations/20260925000000_init.sql` แล้วกด Run
+   - หรือใช้ CLI: `npx supabase link --project-ref <ref>` ตามด้วย `npx supabase db push`
+3. ไปที่ **Project Settings → API Keys** คัดลอก Project URL, publishable key และ secret key
+4. ที่ [vercel.com](https://vercel.com) กด Import repository นี้ แล้วใส่ Environment Variables 3 ตัวตาม `.env.example`
+5. กด Deploy
+   - `vercel.json` ตั้ง region เป็น `sin1` (สิงคโปร์) ไว้แล้ว เพื่อให้ API อยู่ใกล้ฐานข้อมูล
 
-## Learn More
+## โลโก้
 
-To learn more about Next.js, take a look at the following resources:
+วางไฟล์โลโก้ที่ `public/logo.png` (สี่เหลี่ยมจัตุรัส พื้นใส) แล้วเว็บจะแสดงแทนตราตัวอักษร "ครู" อัตโนมัติ
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+ถ้าจะใช้ตราของหน่วยงานจริง ควรขออนุญาตก่อน และคงข้อความท้ายหน้าไว้ว่าเว็บนี้ไม่ใช่ระบบของคุรุสภา
+เพื่อไม่ให้ผู้ใช้เข้าใจผิดว่าเป็นระบบทางการ
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## ทดสอบโหลด (จำลองนักเรียนหลายคนพร้อมกัน)
 
-## Deploy on Vercel
+```bash
+pnpm build && pnpm start          # อีกหน้าต่างหนึ่ง
+STUDENTS=40 THINK_MS=400 pnpm simulate
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+สคริปต์นี้จำลองการสอบตั้งแต่ต้นจนจบ
+- สร้างห้อง แล้วให้นักเรียน N คนเข้าห้อง
+- ครูกดเริ่ม แล้วทุกคนตอบครบ 100 ข้อพร้อมกัน จากนั้นส่งข้อสอบ
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+สิ่งที่วัดและตรวจ
+- เวลาตอบกลับของ API
+- เวลาที่ครูเห็นคำตอบหลังนักเรียนกด
+- คะแนนในฐานข้อมูลตรงกับคำตอบที่ส่งจริงทุกคนหรือไม่
+
+ใช้ `BASE_URL=https://...` เพื่อทดสอบกับเว็บที่ deploy แล้ว
+
+ข้อจำกัดของ Supabase แพ็กเกจฟรี
+- Realtime ต่อพร้อมกันได้ 200 connection
+- ส่งข้อความได้ประมาณ 100 ข้อความ/วินาที
+- เพียงพอสำหรับห้องสอบหลายสิบคน
