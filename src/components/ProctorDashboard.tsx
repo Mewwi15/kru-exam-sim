@@ -547,6 +547,7 @@ export default function ProctorDashboard({ code, tokenFromUrl }: { code: string;
         total={all.length}
         online={selected ? online.has(selected.id) : false}
         questions={questions}
+        peers={all}
         onClose={() => setSelectedId(null)}
       />
     </div>
